@@ -14,7 +14,7 @@ class TextMelLoader(torch.utils.data.Dataset):
         2) normalizes text and converts them to sequences of one-hot vectors
         3) computes mel-spectrograms from audio files.
     """
-    def __init__(self, audiopaths_and_text, hparams):
+    def __init__(self, audiopaths_and_text, hparams, return_file_name=None):
         self.audiopaths_and_text = load_filepaths_and_text(audiopaths_and_text)
         self.text_cleaners = hparams.text_cleaners
         self.max_wav_value = hparams.max_wav_value
@@ -24,6 +24,7 @@ class TextMelLoader(torch.utils.data.Dataset):
             hparams.filter_length, hparams.hop_length, hparams.win_length,
             hparams.n_mel_channels, hparams.sampling_rate, hparams.mel_fmin,
             hparams.mel_fmax)
+        self.return_file_name = return_file_name
         random.seed(hparams.seed)
         random.shuffle(self.audiopaths_and_text)
 
@@ -32,6 +33,8 @@ class TextMelLoader(torch.utils.data.Dataset):
         audiopath, text = audiopath_and_text[0], audiopath_and_text[1]
         text = self.get_text(text)
         mel = self.get_mel(audiopath)
+        if self.return_file_name:
+            return (text, mel, audiopath)
         return (text, mel)
 
     def get_mel(self, filename):
@@ -67,8 +70,9 @@ class TextMelLoader(torch.utils.data.Dataset):
 class TextMelCollate():
     """ Zero-pads model inputs and targets based on number of frames per setep
     """
-    def __init__(self, n_frames_per_step):
+    def __init__(self, n_frames_per_step, return_file_name=False):
         self.n_frames_per_step = n_frames_per_step
+        self.return_file_name = return_file_name
 
     def __call__(self, batch):
         """Collate's training batch from normalized text and mel-spectrogram
@@ -106,6 +110,12 @@ class TextMelCollate():
             mel_padded[i, :, :mel.size(1)] = mel
             gate_padded[i, mel.size(1)-1:] = 1
             output_lengths[i] = mel.size(1)
+        if self.return_file_name:
+            file_names = []
+            for i in range(len(ids_sorted_decreasing)):
+                file_names.append(batch[ids_sorted_decreasing[i]][2])
 
+            return text_padded, input_lengths, mel_padded, gate_padded, \
+                output_lengths, file_names
         return text_padded, input_lengths, mel_padded, gate_padded, \
             output_lengths
